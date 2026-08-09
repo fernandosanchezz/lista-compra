@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lista de la compra</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px; background: #f5f5f7; }
+  h1 { font-size: 22px; }
+  #addForm { display: flex; gap: 8px; margin-bottom: 20px; }
+  #newItem { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; }
+  button { padding: 10px 16px; border-radius: 8px; border: none; background: #007aff; color: white; font-size: 16px; }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; align-items: center; gap: 10px; background: white; margin-bottom: 8px; padding: 12px; border-radius: 10px; }
+  li.bought span { text-decoration: line-through; color: #999; }
+  li button.delete { background: #ff3b30; padding: 6px 10px; margin-left: auto; }
+  input[type="checkbox"] { width: 20px; height: 20px; }
+</style>
+</head>
+<body>
+
+<h1>🛒 Lista de la compra</h1>
+
+<form id="addForm">
+  <input type="text" id="newItem" placeholder="Añadir producto..." required>
+  <button type="submit">Añadir</button>
+</form>
+
+<ul id="list"></ul>
+
+<script type="module">
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+
+  const SUPABASE_URL = 'https://luyvqaiprrlduqodgbpp.supabase.co'
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1eXZxYWlwcnJsZHVxb2RnYnBwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyODI4MDQsImV4cCI6MjEwMTg1ODgwNH0.GkX2dlwyuQz3Hc8RX3_oK0pRhTC1bwlBfJBX4Tn_TzA'
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+  const list = document.getElementById('list')
+  const addForm = document.getElementById('addForm')
+  const newItem = document.getElementById('newItem')
+
+  async function loadItems() {
+    const { data, error } = await supabase
+      .from('shopping_list')
+      .select('*')
+      .order('id', { ascending: true })
+    if (error) return console.error(error)
+    renderList(data)
+  }
+
+  function renderList(items) {
+    list.innerHTML = ''
+    items.forEach(item => {
+      const li = document.createElement('li')
+      if (item.bought) li.classList.add('bought')
+      li.innerHTML = `
+        <input type="checkbox" ${item.bought ? 'checked' : ''} data-id="${item.id}">
+        <span>${item.item}</span>
+        <button class="delete" data-id="${item.id}">🗑️</button>
+      `
+      list.appendChild(li)
+    })
+  }
+
+  addForm.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const text = newItem.value.trim()
+    if (!text) return
+    const { error } = await supabase.from('shopping_list').insert({ item: text })
+    if (error) console.error(error)
+    newItem.value = ''
+  })
+
+  list.addEventListener('change', async (e) => {
+    if (e.target.type === 'checkbox') {
+      const id = e.target.dataset.id
+      const { error } = await supabase
+        .from('shopping_list')
+        .update({ bought: e.target.checked })
+        .eq('id', id)
+      if (error) console.error(error)
+    }
+  })
+
+  list.addEventListener('click', async (e) => {
+    if (e.target.classList.contains('delete')) {
+      const id = e.target.dataset.id
+      const { error } = await supabase.from('shopping_list').delete().eq('id', id)
+      if (error) console.error(error)
+    }
+  })
+
+  supabase
+    .channel('shopping_list_changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_list' }, loadItems)
+    .subscribe()
+
+  loadItems()
+</script>
+
+</body>
+</html>
